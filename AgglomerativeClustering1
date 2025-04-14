@@ -1,0 +1,88 @@
+# Install necessary libraries
+!pip install gradio pillow
+
+# Import required packages
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.cluster import AgglomerativeClustering
+from scipy.cluster.hierarchy import dendrogram, linkage
+import gradio as gr
+from PIL import Image
+import io
+
+# Simulated dataset: Product Demand and Delivery Time
+product_info = {
+    'ID': list(range(1, 21)),
+    'MonthlyDemand': [120, 85, 300, 450, 180, 250, 320, 150, 95, 200,
+                      310, 170, 410, 230, 280, 110, 260, 140, 400, 370],
+    'ShippingDays': [5, 7, 2, 1, 6, 3, 4, 8, 9, 5,
+                     2, 7, 1, 6, 3, 8, 4, 7, 1, 3]
+}
+
+# Convert to DataFrame
+df = pd.DataFrame(product_info)
+data_points = df[['MonthlyDemand', 'ShippingDays']].values
+
+# Function to generate dendrogram image
+def generate_dendrogram():
+    plt.figure(figsize=(8, 5))
+    linked = linkage(data_points, method='ward')
+    dendrogram(linked)
+    plt.title('Hierarchical Tree (Dendrogram)')
+    plt.xlabel('Product Index')
+    plt.ylabel('Merge Distance')
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    plt.close()
+    return Image.open(buf)
+
+# Function to generate clustering plot
+def create_cluster_plot(cluster_count):
+    if cluster_count < 2 or cluster_count >= len(data_points):
+        return f"⚠️ Choose clusters between 2 and {len(data_points) - 1}."
+
+    cluster_model = AgglomerativeClustering(n_clusters=cluster_count, linkage='ward')
+    labels = cluster_model.fit_predict(data_points)
+
+    plt.figure(figsize=(8, 5))
+    plt.scatter(data_points[:, 0], data_points[:, 1], c=labels, cmap='viridis', edgecolors='black')
+    plt.title('Product Grouping Visualization')
+    plt.xlabel('Monthly Demand')
+    plt.ylabel('Delivery Time')
+
+    # Label the products
+    for idx, pid in enumerate(df['ID']):
+        plt.annotate(str(pid), (data_points[idx, 0], data_points[idx, 1]), fontsize=8, ha='right')
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    plt.close()
+    return Image.open(buf)
+
+# Main function to be used with Gradio
+def analyze_and_plot(cluster_count):
+    dendro_img = generate_dendrogram()
+    cluster_img = create_cluster_plot(cluster_count)
+
+    if isinstance(cluster_img, str):
+        return [dendro_img, None, cluster_img]
+
+    return [dendro_img, cluster_img, "✅ Products successfully grouped using Hierarchical Clustering."]
+
+# Set up Gradio interface
+app = gr.Interface(
+    fn=analyze_and_plot,
+    inputs=gr.Slider(minimum=2, maximum=10, step=1, label="Select Cluster Count"),
+    outputs=[
+        gr.Image(type="pil", label="Dendrogram View"),
+        gr.Image(type="pil", label="Cluster Distribution"),
+        gr.Textbox(label="Status")
+    ]
+)
+
+# Launch the Gradio app
+app.launch(share=True)
